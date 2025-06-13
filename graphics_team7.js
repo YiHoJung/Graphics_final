@@ -6,8 +6,8 @@ import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 // --- 전역 변수 ---
 let scene, camera, renderer, clock;
 let physicsWorld;
-objects = [];  // 물리엔진에 영향을 받는 object들 관리
-int score = 0;
+let objects = [];  // 물리엔진에 영향을 받는 object들 관리
+let score = 0;
 
 // object 들마다 무게중심과 같은 point 설정(center로 명명) 및 이를 용이하게 호출하는 함수가 필요
 // 해당 포인트는 local space 기준 원점을 지정
