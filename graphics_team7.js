@@ -1,77 +1,93 @@
-import * as THREE from 'three';  
-// Rapier physics engine 
-import RAPIER from 'https://cdn.skypack.dev/@dimforge/rapier3d-compat';
+/*
+    7조 과제
+    1. 시작하고 GameStart 버튼을 누르면 시작한다.
+    2. 마우스 드래그로 카메라 이동
+    3. limitHeight에 object가 도달하면 게임 종료
+    4. GameStart 누르면 다시 시작
+*/
+
+
+
+
+
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
-//import * as RAPIER from 'three/addons/physics/RapierPhysics.js';
-// --- 전역 변수 ---
-let scene, camera, renderer, clock;
+import RAPIER from 'https://cdn.skypack.dev/@dimforge/rapier3d-compat';
+import { FirstPersonControls } from 'three/addons/controls/FirstPersonControls.js';
+
+// === 변수 선언 ==================================
+// Graphics
+let scene, camera, renderer, fpControls, clock;
 let physicsWorld;
-let objects = [];  // 물리엔진에 영향을 받는 object들 관리
+const objects = [];                     // 생성된 object(mesh + body)
+
+// Game
+let playing = false;
 let score = 0;
+let delta = 0;
+let timer = 0;
+let leftsize, rightsize;
+let nextObjectTimeout = null;
+let limitHeight = 0;           // gameover 되는 높이
 
-// object 들마다 무게중심과 같은 point 설정(center로 명명) 및 이를 용이하게 호출하는 함수가 필요
-// 해당 포인트는 local space 기준 원점을 지정
-// 합쳐진 object는 합쳐지기 전에 두 object의 center의 중점으로 지정
+// object, position
+let leftObject = null;
+let rightObject = null;
+let mixerleft;
+let mixerright;
+let leftpos = new THREE.Vector3();
+let rightpos = new THREE.Vector3();
+let leftPositionAction;
+let rightPositionAction;
+const objectHeight = 20;                        // object가 소환되는 y좌표
+const radius = 10;                               // object 소환하는 원의 반지름
 
-// GUI 컨트롤을 위한 파라미터
+
+// GUI Parameters
 const params = {
-    shape: 'sphere',    // 'sphere' 또는 'cube'
-    count: 100,        // 1에서 500 사이
-    createObjects: function() {
-        // 기존 객체들 제거
-        objects.forEach(obj => {
-            scene.remove(obj.mesh);
-            physicsWorld.removeRigidBody(obj.body);
-        });
-        objects.length = 0;
-        
-        // 새로운 객체들 생성
-        scheduleObjects();
-    }
+    get score() { return score},
+    get delta() { return delta},
+    play:  "",
+    start: gameStart,
+    clear: gameClear
 };
 
-// GUI 설정
-function initGUI() {
-    const gui = new GUI();
-    gui.add(params, 'shape', ['sphere', 'cube']).name('Shape');
-    gui.add(params, 'count', 1, 500, 1).name('Count');
-    gui.add(params, 'createObjects').name('Simulation Start');
-}
 
-// --- 초기화 순서 변경 ---
-async function init() {
-    initThree();
-    await initPhysics();  // RAPIER 초기화 완료를 기다린 후
-    createGround();      // 기다린 후 여기로 진행 가능
-    initGUI();          // GUI 초기화 추가
-    scheduleObjects();  // 초기 객체 생성
-    animate();
-}
+// =================
+//  World 생성
+// =================
 
-// ============================
-// 1. Three.js Scene 설정
-// ============================
+// 1. THREE.js 생성
 function initThree() {
+    // Scene
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xbfd1e5);
+    scene.background = new THREE.Color(0x87CEEB);
 
-    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 20, 50);
-    camera.lookAt(0, 0, 0);
+    // Camera
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(-30,30,2);
+    scene.add(camera);
 
-    // renderer 설정
+
+    // Renderer
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.shadowMap.enabled = true;  // 그림자 활성화
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;  // 부드러운 그림자
-    document.body.appendChild(renderer.domElement);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.body.appendChild(renderer.domElement);    
 
-    // lights
+    // add OrbitControls: arcball-like camera control
+    const orbitControls = new OrbitControls(camera, renderer.domElement);
+    orbitControls.enableDamping = true; // 관성효과, 바로 멈추지 않고 부드럽게 멈춤
+    orbitControls.dampingFactor = 0.05; // 감속 정도, 크면 더 빨리 감속, default = 0.05
+
+    // Light
     const ambientLight = new THREE.AmbientLight(0x404040);
     scene.add(ambientLight);
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
     directionalLight.position.set(10, 20, 10);
-    directionalLight.castShadow = true;  // 그림자 생성
+    directionalLight.castShadow = true;
     directionalLight.shadow.mapSize.width = 2048;
     directionalLight.shadow.mapSize.height = 2048;
     directionalLight.shadow.camera.near = 0.5;
@@ -82,8 +98,14 @@ function initThree() {
     directionalLight.shadow.camera.bottom = -50;
     scene.add(directionalLight);
 
+    // Clock
     clock = new THREE.Clock();
+
+    // Resize
     window.addEventListener("resize", onWindowResize, false);
+
+    drawObjectRoute();
+
 }
 
 function onWindowResize() {
@@ -92,152 +114,343 @@ function onWindowResize() {
     renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-// ============================
-// 2. Rapier.js 물리 월드 초기화
-// ============================
+// 2. Rapier.js
 async function initPhysics() { 
     await RAPIER.init(); 
-    // await로 인해 RAPIER.init() 실행 끝난 후 다음으로 진행 
-    // 즉, RAPIER.init()이 끝나지 않은 상태에서 아래 RAPIER.world 생성하는 것을
-    // 방지하게 해 줌 
-    // Gravity = (0, -9.81, 0) 인 physics world 생성
     physicsWorld = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
 }
 
-// ============================
-// 3. 바닥(ground) 생성
-// ============================
+// 3. Ground
 function createGround() {
-    // Ground Mesh 생성
+    //Ground Mesh 생성
     const groundGeometry = new THREE.PlaneGeometry(100, 100);
-    const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x777777 });
+    const groundMaterial = new THREE.MeshStandardMaterial({ color: 0xD2B48C });
     const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
     groundMesh.rotation.x = -Math.PI / 2;
-    groundMesh.receiveShadow = true;  // 그림자 받기
+    groundMesh.receiveShadow = true;
     scene.add(groundMesh);
-
-    // Ground Mesh에 대응하는 RAPIER Description + Body 생성
-    // fixed(): ground는 움직이지 않음
-    const groundBodyDesc = RAPIER.RigidBodyDesc.fixed() 
-        .setTranslation(0, 0, 0);
-    const groundBody = physicsWorld.createRigidBody(groundBodyDesc);
-
-    // Ground Mesh에 대응하는 RAPIER Collider Description 생성
-    // Collider: 충돌 계산에 사용되는 simple한 형태의 geometry
-    // cuboid(): box 형태의 collider
-    // setFriction(2.0): 마찰 계수 설정, Ground 위의 물체의 미끌어짐 정도에 영향을 줌
-    // parameter: 위의 PlaneGeometry 크기의 half로 x, z 값 지정
-    //            y 값은 0.1로 지정
-    const groundColliderDesc = RAPIER.ColliderDesc.cuboid(50, 0.1, 50)
-        .setFriction(2.0);
-
-    // Ground Mesh에 대응하는 RAPIER Collider 생성
-    physicsWorld.createCollider(groundColliderDesc, groundBody);
 }
 
-// createObject 함수로 통합 (sphere와 cube 모두 처리)
-function createObject() {
-    const size = 0.5 + Math.random();  // random size: 0.5 ~ 1.5
-    let mesh, colliderDesc;
-
-    // Three.js mesh 생성
-    if (params.shape === 'sphere') {
-        // SphereGeometry: radius, widthSegments, heightSegments
-        const geometry = new THREE.SphereGeometry(size, 32, 32);
-        const material = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff });
-        mesh = new THREE.Mesh(geometry, material);
-        mesh.castShadow = true;  // 그림자 생성
-    } else {
-        const geometry = new THREE.BoxGeometry(size * 2, size * 2, size * 2);
-        const material = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff });
-        mesh = new THREE.Mesh(geometry, material);
-        mesh.castShadow = true;  // 그림자 생성
+// 4. Bowl
+function creatBowl() {
+    const lathePoints = [];
+    for (let i = 0; i < 10; i++) {
+      const x = Math.sin(i * 0.2) * 8;          // radius
+      const y = i < 2 ? 1 : (i - 1) / 1.5;      // height
+      lathePoints.push(new THREE.Vector2(x, y));
     }
+    const geometry = new THREE.LatheGeometry(lathePoints, 64);
+    const material = new THREE.MeshStandardMaterial({ color: 0xdddddd, side: THREE.DoubleSide });
+    const bowl = new THREE.Mesh(geometry, material);
+    bowl.receiveShadow = true;
+    scene.add(bowl);
+    // Bowl Collider 생성
+    createBowlCollider(geometry);
+}
 
-    // 위치 설정 (x, z): -5 ~ 5, y: 10 ~ 20
-    const posX = (Math.random() - 0.5) * 10;
-    const posZ = (Math.random() - 0.5) * 10;
-    const posY = 10 + Math.random() * 10;
-    mesh.position.set(posX, posY, posZ);
-    scene.add(mesh);
-
-    // Rapier.js 물리 객체 생성
-    // dynamic(): 고정된 물체가 아님
-    // setTranslation(posX, posY, posZ): 위의 실제 geometry의 위치와 같게 설정
-    const bodyDesc = RAPIER.RigidBodyDesc.dynamic()
-        .setTranslation(posX, posY, posZ);
-    const body = physicsWorld.createRigidBody(bodyDesc);
-
-    // Colliders: sphere는 ball collider, cube는 cuboid collider
-    if (params.shape === 'sphere') {
-        colliderDesc = RAPIER.ColliderDesc.ball(size);
-    } else {
-        colliderDesc = RAPIER.ColliderDesc.cuboid(size, size, size);
-    }
+function createBowlCollider(geometry) {
+    // LatheGeometry에서 vertices와 indices 추출
+    const vertices = geometry.attributes.position.array;
+    const indices = geometry.index.array;
     
-    // Restitution: 반발계수, 물체가 충돌할 때 반발하는 정도, 크면 튕기는 정도가 세짐
-    // Friction: 마찰계수, 물체가 충돌할 때 마찰력이 작용하는 정도, 크면 미끌어지는 정도가 약해짐 
-    colliderDesc.setRestitution(0.8).setFriction(1.0);
-    physicsWorld.createCollider(colliderDesc, body);
-
-    objects.push({ mesh, body }); // objects array에 이 pair를 추가 
+    // Fixed RigidBody 생성 (Bowl은 고정된 오브젝트)
+    const bowlBodyDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(0, 0, 0);
+    const bowlBody = physicsWorld.createRigidBody(bowlBodyDesc);
+    
+    // Trimesh Collider 생성
+    const bowlColliderDesc = RAPIER.ColliderDesc.trimesh(vertices, indices)
+        .setFriction(2.0)
+        .setRestitution(0.3);
+    
+    physicsWorld.createCollider(bowlColliderDesc, bowlBody);
 }
 
-// scheduleObjects 함수 수정
-function scheduleObjects() {
-    for (let i = 0; i < params.count; i++) { // GUI의 object 갯수만큼 생성
-        setTimeout(() => {
-            createObject();
-        }, i * 100); // 100ms 간격으로 object 하나씩 생성
-    }
+
+// =====================
+//  GUI 생성
+// =====================
+
+// GUI 설정
+function initGUI() {
+    const gui = new GUI();
+    const gui1 = gui.add(params, 'play');
+    const gui2 = gui.add(params, 'score').name('Your Score!');
+    const gui3 = gui.add(params, 'start').name('Game Start!');
+    gui1.listen();
+    gui2.listen();
+    gui3.listen();
+
 }
 
 // ============================
-// 6. 애니메이션 루프 및 물리 업데이트
+// 애니메이션 루프 및 물리 업데이트
 // ============================
+
 function animate() {
     requestAnimationFrame(animate);
-    const deltaTime = clock.getDelta();
-
-    // Rapier.js 물리 시뮬레이션을 한 스텝 진행합니다.
+    delta = clock.getDelta();
     physicsWorld.step();
 
-    // 생성된 모든 구에 대해 물리 엔진에서 계산된 위치와 회전을 three.js Mesh에 반영합니다.
+    // object가 생성되면 keyframe 작동
+    if (leftObject && rightObject) {
+        if(timer == 0) {
+            leftPositionAction.reset().play();
+            rightPositionAction.reset().play();
+        }
+        timer += delta;
+        if (timer >= 5) { timer = 0; }
+
+        // keyframe update
+        mixerleft.update(delta);
+        mixerright.update(delta);
+        leftObject.getWorldPosition(leftpos);
+        rightObject.getWorldPosition(rightpos);
+    }
+
+    // object들 계속 유지
     objects.forEach((obj) => {
         const pos = obj.body.translation();
         const rot = obj.body.rotation();
         obj.mesh.position.set(pos.x, pos.y, pos.z);
         obj.mesh.quaternion.set(rot.x, rot.y, rot.z, rot.w);
+
+        // 땅에 근접하면 게임 종료
+        detectCollisionWithGround(obj.mesh.position.y);
     });
-
-    // 물리엔진에 영향을 안 받는 합쳐지기 전의 2개의 물건이 있다면 애니메이션 진행
-
-    // objects 배열 전체 순회로 현재 사용중인 object들이 밖으로 떨어진 상태인지 점검
-
-    // 라이프 점검 및 게임 오버 여부 판단
-
+    
     renderer.render(scene, camera);
 }
 
-// --- 초기화 시작 ---
+
+// =================
+//  Object 생성
+// =================
+
+// Mesh 생성
+function createObject(posX, posZ, size) {
+    const geometry = new THREE.BoxGeometry(size * 2, size * 2, size * 2);
+    const material = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.castShadow = true;  // 그림자 생성
+
+    // 위치 설정 y: objectHeight
+    mesh.position.set(posX, objectHeight, posZ);
+    scene.add(mesh);
+
+    return mesh;
+}
+
+// 생성된 Mesh를 keyframe을 이용해서 나타냄
+function playObjects() {
+    // size 설정
+    leftsize = 0.5 + Math.random();  // random size: 0.5 ~ 1.5
+    rightsize = 0.5 + Math.random();  // random size: 0.5 ~ 1.5
+    
+    // 생성 위치 설정(원 위의 임의의 위치에서 생성)
+    let theta = Math.random() * Math.PI * 2
+    const posX = radius * Math.cos(theta);
+    const posZ = radius * Math.sin(theta);
+
+    // left와 right는 반대에서 생성
+    leftObject = createObject(posX, posZ, leftsize);
+    rightObject = createObject(-posX, -posZ, rightsize);
+
+    // 이름 설정
+    leftObject.name = "left";
+    rightObject.name = "right"
+
+    // Position Animation
+    const leftPositionTimes = [0, 1, 2];
+    const leftPositionValues = [
+        posX, objectHeight, posZ,           // 시작 위치
+        -posX, objectHeight, -posZ,           // 중간 위치
+        posX, objectHeight, posZ            // 끝 위치
+    ];
+    const rightPositionTimes = [0, 1, 2];
+    const rightPositionValues = [
+        -posX, objectHeight, -posZ,           // 시작 위치
+        posX, objectHeight, posZ,           // 중간 위치
+        -posX, objectHeight, -posZ            // 끝 위치
+    ];
+
+    // Position Track
+    const leftPositionTrack = new THREE.KeyframeTrack(
+        leftObject.name + '.position',
+        leftPositionTimes,
+        leftPositionValues
+    );
+    const rightPositionTrack = new THREE.KeyframeTrack(
+        rightObject.name + '.position',
+        rightPositionTimes,
+        rightPositionValues
+    );
+
+    // Animation Clip
+    const leftPositionClip = new THREE.AnimationClip('Position', 5, [leftPositionTrack]);
+    const rightPositionClip = new THREE.AnimationClip('Position', 5, [rightPositionTrack]);
+
+    mixerleft = new THREE.AnimationMixer(leftObject);
+    mixerright = new THREE.AnimationMixer(rightObject);
+    leftPositionAction = mixerleft.clipAction(leftPositionClip);
+    rightPositionAction = mixerright.clipAction(rightPositionClip);
+}
+
+// mergeObjects()의 조건 확인 함수
+function doMergeObjects(key) {
+    if ((key.code === "Space") && leftObject && rightObject) {
+        mergeObjects();
+    }
+}
+
+// mesh와 body를 이용해 object 구현; 물리엔진 효과 적용
+function mergeObjects() {
+    leftPositionAction.stop();      
+    rightPositionAction.stop();
+    score += 1;
+    
+    // clone material & geometry
+    let leftMesh = new THREE.Mesh(leftObject.geometry.clone(), leftObject.material.clone());
+    leftMesh.castShadow = true;
+    leftMesh.position.copy(leftpos);
+    scene.add(leftMesh);
+
+    let rightMesh = new THREE.Mesh(rightObject.geometry.clone(), rightObject.material.clone());
+    rightMesh.castShadow = true;
+    rightMesh.position.copy(rightpos);
+    scene.add(rightMesh);
+
+    // Rapier physics
+    const bodyDescLeft = RAPIER.RigidBodyDesc.dynamic().setTranslation(leftpos.x, leftpos.y, leftpos.z);
+    const bodyLeft = physicsWorld.createRigidBody(bodyDescLeft);
+    const colliderLeft = RAPIER.ColliderDesc.cuboid(leftsize, leftsize, leftsize);
+    colliderLeft.setRestitution(0.8).setFriction(1.0);
+    physicsWorld.createCollider(colliderLeft, bodyLeft);
+    objects.push({ mesh: leftMesh, body: bodyLeft });
+
+    const bodyDescRight = RAPIER.RigidBodyDesc.dynamic().setTranslation(rightpos.x, rightpos.y, rightpos.z);
+    const bodyRight = physicsWorld.createRigidBody(bodyDescRight);
+    const colliderRight = RAPIER.ColliderDesc.cuboid(rightsize, rightsize, rightsize);
+    colliderRight.setRestitution(0.8).setFriction(1.0);
+    physicsWorld.createCollider(colliderRight, bodyRight);
+    objects.push({ mesh: rightMesh, body: bodyRight });
+
+    // Remove animated objects
+    scene.remove(leftObject);
+    scene.remove(rightObject);
+    leftObject = null;
+    rightObject = null;
+
+    nextObjectTimeout = setTimeout(() => {
+        playObjects();
+        nextObjectTimeout = null;
+    }, 5000);
+}
+
+
+// =================
+//  Game 진행
+// =================
+
+function gameStart() {
+    if (playing == true) return;
+    playing = true;
+    params.play = "Playing~";
+    gameClear();        // 설정 초기화
+
+    document.addEventListener('keydown', doMergeObjects);       // 처음 실행 혹은 remove 한 EventListener add
+
+    console.log("Game Start!");
+    params.play = "Playing!";               // GUI에 나타냄
+
+    playObjects();
+
+}
+
+// y 좌표가 5보다 작으면 gameover
+function detectCollisionWithGround(y) {
+    if (y <= limitHeight) {
+        gameOver();
+    }
+}
+
+function gameOver() {
+    playing = false;
+    // 다음 호출 예약된 게 있으면 취소
+    if (nextObjectTimeout !== null) {
+        clearTimeout(nextObjectTimeout);
+        nextObjectTimeout = null;
+    }
+    leftPositionAction.stop();      // key frame 중지
+    rightPositionAction.stop();
+
+    objects.forEach((obj) => {          // 현재 자리에 고정
+        obj.body.setBodyType(RAPIER.RigidBodyType.Fixed);
+    });
+    document.removeEventListener("keydown", doMergeObjects);    // mergerobject 중지
+    params.play = "Game Over!";
+}
+
+function gameClear() {
+    score = 0;
+    timer = 0;
+    delta = 0;
+
+    // 애니메이션 중단
+    if (leftPositionAction) leftPositionAction.stop();
+    if (rightPositionAction) rightPositionAction.stop();
+    if (mixerleft) mixerleft.stopAllAction();
+    if (mixerright) mixerright.stopAllAction();
+
+    // animated object 제거
+    if (leftObject) scene.remove(leftObject);
+    if (rightObject) scene.remove(rightObject);
+    leftObject = null;
+    rightObject = null;
+    mixerleft = null;
+    mixerright = null;
+
+    // 떨어진 물리 오브젝트 제거
+    objects.forEach(obj => {
+        scene.remove(obj.mesh);
+        physicsWorld.removeRigidBody(obj.body);
+    });
+    objects.length = 0;
+}
+
+
+// object 생성 위치를 보여주는 함수 -> 원으로 보여준다
+function drawObjectRoute() {
+    const points = [];
+    const segments = 256;
+
+    for (let i = 0; i <= segments; i++) {
+        const theta = (i / segments) * Math.PI * 2;
+        const x = radius * Math.cos(theta);
+        const z = radius * Math.sin(theta);
+        const y = objectHeight;
+        points.push(new THREE.Vector3(x, y, z));
+    }
+
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+    const route = new THREE.LineLoop(geometry, material);
+
+    scene.add(route);
+}
+
+// =================
+//  초기화 및 시작
+// =================
+
+async function init() {
+    initThree();
+    await initPhysics();
+    createGround();
+    creatBowl();      
+    initGUI();
+    animate();
+}
+
 init().catch(error => {
     console.error("Failed to initialize:", error);
 });
-
-//// 추가 함수
-
-// 합쳐지기 전의 두 object 생성
-function create(){
-
-}
-
-// object 2개가 오고 있을 때 버튼 입력시 합치는 작업 진행행
-function combine(){
-    // 1.특정 입력이 오면 호출되도록 키보드 이벤트에서 호출
-    // 2. 새로운 형태의 object 생성 및 objects 배열에 추가
-    // 3. 새로 생성된 object가 물리엔진의 영향을 받도록 설정
-    // 4. 합쳐지기 전의 두 object 삭제
-
-    
-    // 다시 새로운 object 2개를 생성하는 함수 호출출
-}
