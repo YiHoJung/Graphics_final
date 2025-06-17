@@ -86,7 +86,7 @@ function initThree() {
     const ambientLight = new THREE.AmbientLight(0x404040);
     scene.add(ambientLight);
     const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-    directionalLight.position.set(10, 20, 10);
+    directionalLight.position.set(0, 50, 0);
     directionalLight.castShadow = true;
     directionalLight.shadow.mapSize.width = 2048;
     directionalLight.shadow.mapSize.height = 2048;
@@ -144,16 +144,16 @@ function creatBowl() {
 
     // 외부 곡선 생성
     for (let i = 0; i < 10; i++) {
-    const x = Math.sin(i * 0.2) * 8 + bowlThickness; // 외부 반지름
-    const y = i < 2 ? 0.5 : (i - 1) / 1.5;
-    lathePointsOuter.push(new THREE.Vector2(x, y));
+        const x = Math.sin(i * 0.2) * 8 + bowlThickness; // 외부 반지름
+        const y = i < 1 ? 1 : (i - 1) / 2 + 1;
+        lathePointsOuter.push(new THREE.Vector2(x, y));
     }
 
     // 내부 곡선 생성 (반지름 - 두께)
     for (let i = 9; i >= 0; i--) {
-    const x = Math.sin(i * 0.2) * 8;
-    const y = i < 2 ? 1 : (i - 1) / 1.5;
-    lathePointsInner.push(new THREE.Vector2(x, y));
+        const x = Math.sin(i * 0.2) * 8;
+        const y = i < 1 ? 1 : (i - 1) / 2 + 1;
+        lathePointsInner.push(new THREE.Vector2(x, y));
     }
 
     // 외부 곡선 + 내부 곡선 연결
