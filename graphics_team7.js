@@ -65,7 +65,7 @@ function initThree() {
     scene.background = new THREE.Color(0x87CEEB);
 
     // Camera
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
     camera.position.set(-30,30,2);
     scene.add(camera);
 
@@ -122,9 +122,13 @@ async function initPhysics() {
 
 // 3. Ground
 function createGround() {
-    //Ground Mesh 생성
+    // Ground Mesh 생성
     const groundGeometry = new THREE.PlaneGeometry(100, 100);
-    const groundMaterial = new THREE.MeshStandardMaterial({ color: 0xD2B48C });
+    // 용암 텍스처
+    const groundTexture = new THREE.TextureLoader().load('./assets/lava_texture.png');
+    groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
+    groundTexture.repeat.set(10, 10); // 반복 횟수 조정
+    const groundMaterial = new THREE.MeshStandardMaterial({ map: groundTexture, side: THREE.DoubleSide });
     const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
     groundMesh.rotation.x = -Math.PI / 2;
     groundMesh.receiveShadow = true;
@@ -160,7 +164,7 @@ function createBowlCollider(geometry) {
     // Trimesh Collider 생성
     const bowlColliderDesc = RAPIER.ColliderDesc.trimesh(vertices, indices)
         .setFriction(2.0)
-        .setRestitution(0.3);
+        .setRestitution(0.2);
     
     physicsWorld.createCollider(bowlColliderDesc, bowlBody);
 }
@@ -299,6 +303,7 @@ function playObjects() {
 function doMergeObjects(key) {
     if ((key.code === "Space") && leftObject && rightObject) {
         mergeObjects();
+        timer = 0;
     }
 }
 
@@ -323,14 +328,14 @@ function mergeObjects() {
     const bodyDescLeft = RAPIER.RigidBodyDesc.dynamic().setTranslation(leftpos.x, leftpos.y, leftpos.z);
     const bodyLeft = physicsWorld.createRigidBody(bodyDescLeft);
     const colliderLeft = RAPIER.ColliderDesc.cuboid(leftsize, leftsize, leftsize);
-    colliderLeft.setRestitution(0.8).setFriction(1.0);
+    colliderLeft.setRestitution(0.2).setFriction(1.0);
     physicsWorld.createCollider(colliderLeft, bodyLeft);
     objects.push({ mesh: leftMesh, body: bodyLeft });
 
     const bodyDescRight = RAPIER.RigidBodyDesc.dynamic().setTranslation(rightpos.x, rightpos.y, rightpos.z);
     const bodyRight = physicsWorld.createRigidBody(bodyDescRight);
     const colliderRight = RAPIER.ColliderDesc.cuboid(rightsize, rightsize, rightsize);
-    colliderRight.setRestitution(0.8).setFriction(1.0);
+    colliderRight.setRestitution(0.2).setFriction(1.0);
     physicsWorld.createCollider(colliderRight, bodyRight);
     objects.push({ mesh: rightMesh, body: bodyRight });
 
