@@ -131,20 +131,38 @@ function createGround() {
     const groundMaterial = new THREE.MeshStandardMaterial({ map: groundTexture, side: THREE.DoubleSide });
     const groundMesh = new THREE.Mesh(groundGeometry, groundMaterial);
     groundMesh.rotation.x = -Math.PI / 2;
-    groundMesh.receiveShadow = true;
+    //groundMesh.receiveShadow = true;
     scene.add(groundMesh);
 }
 
 // 4. Bowl
 function creatBowl() {
-    const lathePoints = [];
+    const bowlThickness = 1; // bowl 두께
+
+    const lathePointsOuter = [];
+    const lathePointsInner = [];
+
+    // 외부 곡선 생성
     for (let i = 0; i < 10; i++) {
-      const x = Math.sin(i * 0.2) * 8;          // radius
-      const y = i < 2 ? 1 : (i - 1) / 1.5;      // height
-      lathePoints.push(new THREE.Vector2(x, y));
+    const x = Math.sin(i * 0.2) * 8 + bowlThickness; // 외부 반지름
+    const y = i < 2 ? 0.5 : (i - 1) / 1.5;
+    lathePointsOuter.push(new THREE.Vector2(x, y));
     }
+
+    // 내부 곡선 생성 (반지름 - 두께)
+    for (let i = 9; i >= 0; i--) {
+    const x = Math.sin(i * 0.2) * 8;
+    const y = i < 2 ? 1 : (i - 1) / 1.5;
+    lathePointsInner.push(new THREE.Vector2(x, y));
+    }
+
+    // 외부 곡선 + 내부 곡선 연결
+    const lathePoints = [...lathePointsOuter, ...lathePointsInner];
+
     const geometry = new THREE.LatheGeometry(lathePoints, 64);
-    const material = new THREE.MeshStandardMaterial({ color: 0xdddddd, side: THREE.DoubleSide });
+    // stone 텍스처
+    const stoneTexture = new THREE.TextureLoader().load('./assets/stone_texture.png');
+    const material = new THREE.MeshStandardMaterial({ map: stoneTexture, side: THREE.DoubleSide });
     const bowl = new THREE.Mesh(geometry, material);
     bowl.receiveShadow = true;
     scene.add(bowl);
