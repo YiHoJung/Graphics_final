@@ -2,8 +2,9 @@
     7조 과제
     1. 시작하고 GameStart 버튼을 누르면 시작한다.
     2. 마우스 드래그로 카메라 이동
-    3. limitHeight에 object가 도달하면 게임 종료
-    4. GameStart 누르면 다시 시작
+    3. 스페이스바로 과일 떨어뜨리기
+    4. limitHeight에 object가 도달하면 게임 종료
+    5. GameStart 누르면 다시 시작
 */
 
 
@@ -53,7 +54,7 @@ const modelPaths = [
 
 const modelScales = [
     20,   // 사과
-    0.006, // 포도
+    0.003, // 포도
     25, //바나나
     25, // 레몬
     25 //수박
@@ -209,7 +210,7 @@ function createBowlCollider(geometry) {
     // Trimesh Collider 생성
     const bowlColliderDesc = RAPIER.ColliderDesc.trimesh(vertices, indices)
         .setFriction(2.0)
-        .setRestitution(0.2);
+        .setRestitution(0.1);
     
     physicsWorld.createCollider(bowlColliderDesc, bowlBody);
 }
@@ -367,37 +368,31 @@ function mergeObjects() {
     score += 1;
     
     // clone material & geometry
-    //let leftMesh = new THREE.Mesh(leftObject.geometry.clone(), leftObject.material.clone());
     let leftMesh = cloneMeshObject(leftObject, leftpos);
     leftMesh.castShadow = true;
-    leftMesh.position.copy(leftpos);
     scene.add(leftMesh);
 
-    //let rightMesh = new THREE.Mesh(rightObject.geometry.clone(), rightObject.material.clone());
     let rightMesh = cloneMeshObject(rightObject, rightpos);
     rightMesh.castShadow = true;
-    rightMesh.position.copy(rightpos);
     scene.add(rightMesh);
 
     // Rapier physics
-    const bodyDescLeft = RAPIER.RigidBodyDesc.dynamic().setTranslation(leftpos.x, leftpos.y, leftpos.z);
+    const bodyDescLeft = RAPIER.RigidBodyDesc.dynamic().setTranslation(
+        leftpos.x,
+        leftpos.y,
+        leftpos.z
+    );
     const bodyLeft = physicsWorld.createRigidBody(bodyDescLeft);
-    // const colliderLeft = RAPIER.ColliderDesc.cuboid(leftsize, leftsize, leftsize);
-    const leftSizeVec = getObjectBoundingBoxSize(leftMesh);
-    const colliderLeft = RAPIER.ColliderDesc.cuboid(leftSizeVec.x, leftSizeVec.y, leftSizeVec.z);
-
-    colliderLeft.setRestitution(0.2).setFriction(1.0);
-    physicsWorld.createCollider(colliderLeft, bodyLeft);
+    createConvexHullCollider(leftMesh, bodyLeft);
     objects.push({ mesh: leftMesh, body: bodyLeft });
 
-    const bodyDescRight = RAPIER.RigidBodyDesc.dynamic().setTranslation(rightpos.x, rightpos.y, rightpos.z);
+    const bodyDescRight = RAPIER.RigidBodyDesc.dynamic().setTranslation(
+        rightpos.x,
+        rightpos.y,
+        rightpos.z
+    );
     const bodyRight = physicsWorld.createRigidBody(bodyDescRight);
-    //const colliderRight = RAPIER.ColliderDesc.cuboid(rightsize, rightsize, rightsize);
-    const rightSizeVec = getObjectBoundingBoxSize(rightMesh);
-    const colliderRight = RAPIER.ColliderDesc.cuboid(rightSizeVec.x, rightSizeVec.y, rightSizeVec.z);
-    
-    colliderRight.setRestitution(0.2).setFriction(1.0);
-    physicsWorld.createCollider(colliderRight, bodyRight);
+    createConvexHullCollider(rightMesh, bodyRight);
     objects.push({ mesh: rightMesh, body: bodyRight });
 
     // Remove animated objects
@@ -427,14 +422,45 @@ function cloneMeshObject(obj, position) {
     return clone;
 }
 
-function getObjectBoundingBoxSize(object) {
-    const box = new THREE.Box3().setFromObject(object);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-    return size.multiplyScalar(0.5);  // Rapier는 half-extents 기준
+function createConvexHullCollider(mesh, body) {
+    const vertices = [];
+    
+    // 메쉬의 월드 변환 업데이트
+    mesh.updateMatrixWorld(true);
+    
+    // RigidBody의 월드 위치 가져오기
+    const bodyPos = new THREE.Vector3(
+        body.translation().x,
+        body.translation().y,
+        body.translation().z
+    );
+
+    mesh.traverse(child => {
+        if (child.isMesh) {
+            const geometry = child.geometry;
+            const positionAttribute = geometry.attributes.position;
+            const vertex = new THREE.Vector3();
+
+            for (let i = 0; i < positionAttribute.count; i++) {
+                vertex.fromBufferAttribute(positionAttribute, i);
+                
+                // 1. 자식 메쉬의 로컬 -> 월드 좌표계 변환
+                child.localToWorld(vertex);
+                
+                // 2. RigidBody 위치 기준으로 로컬 좌표계 조정
+                vertex.sub(bodyPos);
+                
+                vertices.push(vertex.x, vertex.y, vertex.z);
+            }
+        }
+    });
+
+    const colliderDesc = RAPIER.ColliderDesc.convexHull(new Float32Array(vertices))
+        .setRestitution(0.1)
+        .setFriction(2.0);
+    
+    physicsWorld.createCollider(colliderDesc, body);
 }
-
-
 
 // =================
 //  Game 진행
