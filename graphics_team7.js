@@ -29,19 +29,15 @@ let playing = false;
 let score = 0;
 let delta = 0;
 let timer = 0;
-let leftsize, rightsize;
+let fruitsize;
 let nextObjectTimeout = null;
 let limitHeight = 0;           // gameover 되는 높이
 
 // object, position
-let leftObject = null;
-let rightObject = null;
-let mixerleft;
-let mixerright;
-let leftpos = new THREE.Vector3();
-let rightpos = new THREE.Vector3();
-let leftPositionAction;
-let rightPositionAction;
+let fruitObject = null;
+let mixerfruit;
+let fruitpos = new THREE.Vector3();
+let fruitPositionAction;
 const objectHeight = 20;                        // object가 소환되는 y좌표
 const radius = 10;                               // object 소환하는 원의 반지름
 const modelPaths = [
@@ -242,19 +238,16 @@ function animate() {
     physicsWorld.step();
 
     // object가 생성되면 keyframe 작동
-    if (leftObject && rightObject) {
+    if (fruitObject) {
         if(timer == 0) {
-            leftPositionAction.reset().play();
-            rightPositionAction.reset().play();
+            fruitPositionAction.reset().play();
         }
         timer += delta;
         if (timer >= 5) { timer = 0; }
 
         // keyframe update
-        mixerleft.update(delta);
-        mixerright.update(delta);
-        leftObject.getWorldPosition(leftpos);
-        rightObject.getWorldPosition(rightpos);
+        mixerfruit.update(delta);
+        fruitObject.getWorldPosition(fruitpos);
     }
 
     // object들 계속 유지
@@ -278,9 +271,6 @@ function animate() {
 
 // Mesh 생성
 function createObject(posX, posZ, size) {
-    //const geometry = new THREE.BoxGeometry(size * 2, size * 2, size * 2);
-    //const material = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff });
-    //const mesh = new THREE.Mesh(geometry, material);
     
     // 모델 무작위 선택 및 복제
     const modelIndex = Math.floor(Math.random() * loadedModels.length);
@@ -291,6 +281,11 @@ function createObject(posX, posZ, size) {
 
     // 위치 설정 y: objectHeight
     mesh.position.set(posX, objectHeight, posZ);
+    mesh.traverse(child => {
+        if (child.isMesh) {
+            child.castShadow = true;
+        }
+    });
     scene.add(mesh);
 
     return mesh;
@@ -301,61 +296,43 @@ function createObject(posX, posZ, size) {
 // 생성된 Mesh를 keyframe을 이용해서 나타냄
 function playObjects() {
     // size 설정
-    leftsize = 0.5 + Math.random();  // random size: 0.5 ~ 1.5
-    rightsize = 0.5 + Math.random();  // random size: 0.5 ~ 1.5
+    fruitsize = 0.5 + Math.random();  // random size: 0.5 ~ 1.5
     
     // 생성 위치 설정(원 위의 임의의 위치에서 생성)
     let theta = Math.random() * Math.PI * 2
     const posX = radius * Math.cos(theta);
     const posZ = radius * Math.sin(theta);
 
-    // left와 right는 반대에서 생성
-    leftObject = createObject(posX, posZ, leftsize);
-    rightObject = createObject(-posX, -posZ, rightsize);
+    fruitObject = createObject(posX, posZ, fruitsize);
 
     // 이름 설정
-    leftObject.name = "left";
-    rightObject.name = "right"
+    fruitObject.name = "fruit";
 
     // Position Animation
-    const leftPositionTimes = [0, 1, 2];
-    const leftPositionValues = [
+    const fruitPositionTimes = [0, 1, 2];
+    const fruitPositionValues = [
         posX, objectHeight, posZ,           // 시작 위치
         -posX, objectHeight, -posZ,           // 중간 위치
         posX, objectHeight, posZ            // 끝 위치
     ];
-    const rightPositionTimes = [0, 1, 2];
-    const rightPositionValues = [
-        -posX, objectHeight, -posZ,           // 시작 위치
-        posX, objectHeight, posZ,           // 중간 위치
-        -posX, objectHeight, -posZ            // 끝 위치
-    ];
 
     // Position Track
-    const leftPositionTrack = new THREE.KeyframeTrack(
-        leftObject.name + '.position',
-        leftPositionTimes,
-        leftPositionValues
-    );
-    const rightPositionTrack = new THREE.KeyframeTrack(
-        rightObject.name + '.position',
-        rightPositionTimes,
-        rightPositionValues
+    const fruitPositionTrack = new THREE.KeyframeTrack(
+        fruitObject.name + '.position',
+        fruitPositionTimes,
+        fruitPositionValues
     );
 
     // Animation Clip
-    const leftPositionClip = new THREE.AnimationClip('Position', 5, [leftPositionTrack]);
-    const rightPositionClip = new THREE.AnimationClip('Position', 5, [rightPositionTrack]);
+    const fruitPositionClip = new THREE.AnimationClip('Position', 5, [fruitPositionTrack]);
 
-    mixerleft = new THREE.AnimationMixer(leftObject);
-    mixerright = new THREE.AnimationMixer(rightObject);
-    leftPositionAction = mixerleft.clipAction(leftPositionClip);
-    rightPositionAction = mixerright.clipAction(rightPositionClip);
+    mixerfruit = new THREE.AnimationMixer(fruitObject);
+    fruitPositionAction = mixerfruit.clipAction(fruitPositionClip);
 }
 
 // mergeObjects()의 조건 확인 함수
 function doMergeObjects(key) {
-    if ((key.code === "Space") && leftObject && rightObject) {
+    if ((key.code === "Space") && fruitObject) {
         mergeObjects();
         timer = 0;
     }
@@ -363,43 +340,27 @@ function doMergeObjects(key) {
 
 // mesh와 body를 이용해 object 구현; 물리엔진 효과 적용
 function mergeObjects() {
-    leftPositionAction.stop();      
-    rightPositionAction.stop();
+    fruitPositionAction.stop();      
     score += 1;
     
     // clone material & geometry
-    let leftMesh = cloneMeshObject(leftObject, leftpos);
-    leftMesh.castShadow = true;
-    scene.add(leftMesh);
-
-    let rightMesh = cloneMeshObject(rightObject, rightpos);
-    rightMesh.castShadow = true;
-    scene.add(rightMesh);
+    let fruitMesh = cloneMeshObject(fruitObject, fruitpos);
+    fruitMesh.castShadow = true;
+    scene.add(fruitMesh);
 
     // Rapier physics
-    const bodyDescLeft = RAPIER.RigidBodyDesc.dynamic().setTranslation(
-        leftpos.x,
-        leftpos.y,
-        leftpos.z
+    const bodyDescfruit = RAPIER.RigidBodyDesc.dynamic().setTranslation(
+        fruitpos.x,
+        fruitpos.y,
+        fruitpos.z
     );
-    const bodyLeft = physicsWorld.createRigidBody(bodyDescLeft);
-    createConvexHullCollider(leftMesh, bodyLeft);
-    objects.push({ mesh: leftMesh, body: bodyLeft });
-
-    const bodyDescRight = RAPIER.RigidBodyDesc.dynamic().setTranslation(
-        rightpos.x,
-        rightpos.y,
-        rightpos.z
-    );
-    const bodyRight = physicsWorld.createRigidBody(bodyDescRight);
-    createConvexHullCollider(rightMesh, bodyRight);
-    objects.push({ mesh: rightMesh, body: bodyRight });
+    const bodyfruit = physicsWorld.createRigidBody(bodyDescfruit);
+    createConvexHullCollider(fruitMesh, bodyfruit);
+    objects.push({ mesh: fruitMesh, body: bodyfruit });
 
     // Remove animated objects
-    scene.remove(leftObject);
-    scene.remove(rightObject);
-    leftObject = null;
-    rightObject = null;
+    scene.remove(fruitObject);
+    fruitObject = null;
 
     nextObjectTimeout = setTimeout(() => {
         playObjects();
@@ -495,8 +456,7 @@ function gameOver() {
         clearTimeout(nextObjectTimeout);
         nextObjectTimeout = null;
     }
-    leftPositionAction.stop();      // key frame 중지
-    rightPositionAction.stop();
+    fruitPositionAction.stop();      // key frame 중지
 
     objects.forEach((obj) => {          // 현재 자리에 고정
         obj.body.setBodyType(RAPIER.RigidBodyType.Fixed);
@@ -511,18 +471,13 @@ function gameClear() {
     delta = 0;
 
     // 애니메이션 중단
-    if (leftPositionAction) leftPositionAction.stop();
-    if (rightPositionAction) rightPositionAction.stop();
-    if (mixerleft) mixerleft.stopAllAction();
-    if (mixerright) mixerright.stopAllAction();
+    if (fruitPositionAction) fruitPositionAction.stop();
+    if (mixerfruit) mixerfruit.stopAllAction();
 
     // animated object 제거
-    if (leftObject) scene.remove(leftObject);
-    if (rightObject) scene.remove(rightObject);
-    leftObject = null;
-    rightObject = null;
-    mixerleft = null;
-    mixerright = null;
+    if (fruitObject) scene.remove(fruitObject);
+    fruitObject = null;
+    mixerfruit = null;
 
     // 떨어진 물리 오브젝트 제거
     objects.forEach(obj => {
