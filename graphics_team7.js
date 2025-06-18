@@ -8,15 +8,12 @@
 */
 
 
-
-
-
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import RAPIER from 'https://cdn.skypack.dev/@dimforge/rapier3d-compat';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { FirstPersonControls } from 'three/addons/controls/FirstPersonControls.js';
+
 
 // === 변수 선언 ==================================
 // Graphics
@@ -49,7 +46,7 @@ const modelPaths = [
 ];
 
 const modelScales = [
-    20,   // 사과
+    25,   // 사과
     0.003, // 포도
     25, //바나나
     25, // 레몬
@@ -383,6 +380,7 @@ function cloneMeshObject(obj, position) {
     return clone;
 }
 
+// fruit의 Convex Hull Collider 생성을 위한 함수
 function createConvexHullCollider(mesh, body) {
     const vertices = [];
     
@@ -405,10 +403,10 @@ function createConvexHullCollider(mesh, body) {
             for (let i = 0; i < positionAttribute.count; i++) {
                 vertex.fromBufferAttribute(positionAttribute, i);
                 
-                // 1. 자식 메쉬의 로컬 -> 월드 좌표계 변환
+                // 자식 메쉬의 로컬 -> 월드 좌표계 변환
                 child.localToWorld(vertex);
                 
-                // 2. RigidBody 위치 기준으로 로컬 좌표계 조정
+                // RigidBody 위치 기준으로 로컬 좌표계 조정
                 vertex.sub(bodyPos);
                 
                 vertices.push(vertex.x, vertex.y, vertex.z);
@@ -442,7 +440,7 @@ function gameStart() {
 
 }
 
-// y 좌표가 5보다 작으면 gameover
+// y 좌표가 0보다 작으면 gameover
 function detectCollisionWithGround(y) {
     if (y <= limitHeight) {
         gameOver();
