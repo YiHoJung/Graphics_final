@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 import RAPIER from 'https://cdn.skypack.dev/@dimforge/rapier3d-compat';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { FirstPersonControls } from 'three/addons/controls/FirstPersonControls.js';
 
 // === 변수 선언 ==================================
@@ -42,6 +43,21 @@ let leftPositionAction;
 let rightPositionAction;
 const objectHeight = 20;                        // object가 소환되는 y좌표
 const radius = 10;                               // object 소환하는 원의 반지름
+const modelPaths = [
+  './models/red_apple_tgzoahbpa_low.glb',
+  './models/wooden_pallet4_fbx.glb',
+];
+
+// 모델 선로딩
+const loadedModels = [];
+
+async function preloadModels() {
+    const loader = new GLTFLoader();
+    for (let path of modelPaths) {
+        const gltf = await loader.loadAsync(path);
+        loadedModels.push(gltf.scene);
+    }
+}
 
 
 // GUI Parameters
@@ -250,10 +266,20 @@ function animate() {
 
 // Mesh 생성
 function createObject(posX, posZ, size) {
-    const geometry = new THREE.BoxGeometry(size * 2, size * 2, size * 2);
-    const material = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff });
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.castShadow = true;  // 그림자 생성
+    //const geometry = new THREE.BoxGeometry(size * 2, size * 2, size * 2);
+    //const material = new THREE.MeshLambertMaterial({ color: Math.random() * 0xffffff });
+    //const mesh = new THREE.Mesh(geometry, material);
+    
+    // 모델 무작위 선택 및 복제
+    const modelIndex = Math.floor(Math.random() * loadedModels.length);
+    const mesh = loadedModels[modelIndex].clone(true);
+    
+    // 모델 별 기본 크기 조정
+    const modelScales = [
+    50,   // red_apple_tgzoahbpa_low.glb
+    3   // wooden_pallet4_fbx.glb
+    ];
+    mesh.scale.set(size * modelScales[modelIndex], size * modelScales[modelIndex], size * modelScales[modelIndex]);
 
     // 위치 설정 y: objectHeight
     mesh.position.set(posX, objectHeight, posZ);
@@ -261,6 +287,8 @@ function createObject(posX, posZ, size) {
 
     return mesh;
 }
+
+
 
 // 생성된 Mesh를 keyframe을 이용해서 나타냄
 function playObjects() {
@@ -332,12 +360,14 @@ function mergeObjects() {
     score += 1;
     
     // clone material & geometry
-    let leftMesh = new THREE.Mesh(leftObject.geometry.clone(), leftObject.material.clone());
+    //let leftMesh = new THREE.Mesh(leftObject.geometry.clone(), leftObject.material.clone());
+    let leftMesh = cloneMeshObject(leftObject, leftpos);
     leftMesh.castShadow = true;
     leftMesh.position.copy(leftpos);
     scene.add(leftMesh);
 
-    let rightMesh = new THREE.Mesh(rightObject.geometry.clone(), rightObject.material.clone());
+    //let rightMesh = new THREE.Mesh(rightObject.geometry.clone(), rightObject.material.clone());
+    let rightMesh = cloneMeshObject(rightObject, rightpos);
     rightMesh.castShadow = true;
     rightMesh.position.copy(rightpos);
     scene.add(rightMesh);
@@ -345,14 +375,20 @@ function mergeObjects() {
     // Rapier physics
     const bodyDescLeft = RAPIER.RigidBodyDesc.dynamic().setTranslation(leftpos.x, leftpos.y, leftpos.z);
     const bodyLeft = physicsWorld.createRigidBody(bodyDescLeft);
-    const colliderLeft = RAPIER.ColliderDesc.cuboid(leftsize, leftsize, leftsize);
+    // const colliderLeft = RAPIER.ColliderDesc.cuboid(leftsize, leftsize, leftsize);
+    const leftSizeVec = getObjectBoundingBoxSize(leftMesh);
+    const colliderLeft = RAPIER.ColliderDesc.cuboid(leftSizeVec.x, leftSizeVec.y, leftSizeVec.z);
+
     colliderLeft.setRestitution(0.2).setFriction(1.0);
     physicsWorld.createCollider(colliderLeft, bodyLeft);
     objects.push({ mesh: leftMesh, body: bodyLeft });
 
     const bodyDescRight = RAPIER.RigidBodyDesc.dynamic().setTranslation(rightpos.x, rightpos.y, rightpos.z);
     const bodyRight = physicsWorld.createRigidBody(bodyDescRight);
-    const colliderRight = RAPIER.ColliderDesc.cuboid(rightsize, rightsize, rightsize);
+    //const colliderRight = RAPIER.ColliderDesc.cuboid(rightsize, rightsize, rightsize);
+    const rightSizeVec = getObjectBoundingBoxSize(rightMesh);
+    const colliderRight = RAPIER.ColliderDesc.cuboid(rightSizeVec.x, rightSizeVec.y, rightSizeVec.z);
+    
     colliderRight.setRestitution(0.2).setFriction(1.0);
     physicsWorld.createCollider(colliderRight, bodyRight);
     objects.push({ mesh: rightMesh, body: bodyRight });
@@ -368,6 +404,29 @@ function mergeObjects() {
         nextObjectTimeout = null;
     }, 5000);
 }
+
+// glb 모델 처리를 위한 추가 함수
+function cloneMeshObject(obj, position) {
+    const clone = obj.clone(true);  // 구조 전체 복사
+    clone.traverse(child => {
+        if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+        }
+    });
+    clone.position.copy(position);
+    clone.rotation.copy(obj.rotation);  // 필요시 유지
+    scene.add(clone);
+    return clone;
+}
+
+function getObjectBoundingBoxSize(object) {
+    const box = new THREE.Box3().setFromObject(object);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    return size.multiplyScalar(0.5);  // Rapier는 half-extents 기준
+}
+
 
 
 // =================
@@ -467,6 +526,7 @@ function drawObjectRoute() {
 
 async function init() {
     initThree();
+    await preloadModels();
     await initPhysics();
     createGround();
     creatBowl();      
