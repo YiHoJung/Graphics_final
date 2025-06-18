@@ -45,7 +45,18 @@ const objectHeight = 20;                        // object가 소환되는 y좌�
 const radius = 10;                               // object 소환하는 원의 반지름
 const modelPaths = [
   './models/red_apple_tgzoahbpa_low.glb',
-  './models/wooden_pallet4_fbx.glb',
+  './models/grape.glb',
+  './models/banana_tklkaixiw_low.glb',
+  './models/lemon_th5jddwva_low.glb',
+  './models/watermelon_tguocjppa_low.glb'
+];
+
+const modelScales = [
+    20,   // 사과
+    0.006, // 포도
+    25, //바나나
+    25, // 레몬
+    25 //수박
 ];
 
 // 모델 선로딩
@@ -275,10 +286,6 @@ function createObject(posX, posZ, size) {
     const mesh = loadedModels[modelIndex].clone(true);
     
     // 모델 별 기본 크기 조정
-    const modelScales = [
-    50,   // red_apple_tgzoahbpa_low.glb
-    3   // wooden_pallet4_fbx.glb
-    ];
     mesh.scale.set(size * modelScales[modelIndex], size * modelScales[modelIndex], size * modelScales[modelIndex]);
 
     // 위치 설정 y: objectHeight
