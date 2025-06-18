@@ -293,7 +293,7 @@ function createObject(posX, posZ, size) {
 // 생성된 Mesh를 keyframe을 이용해서 나타냄
 function playObjects() {
     // size 설정
-    fruitsize = 0.5 + Math.random();  // random size: 0.5 ~ 1.5
+    fruitsize = 0.5 + 1.5 * Math.random();  // random size: 0.5 ~ 2.0
     
     // 생성 위치 설정(원 위의 임의의 위치에서 생성)
     let theta = Math.random() * Math.PI * 2
